@@ -1,6 +1,9 @@
 const puppeteer = require('puppeteer');
 const devices = require('puppeteer/DeviceDescriptors');
-const Iphone = devices['iPhone 6'];
+fs = require('fs');
+path = require('path');
+mkdirp = require('mkdirp');
+fsExtra = require('fs-extra');
 
 
 const WEBSKY_SITES = [
@@ -43,6 +46,10 @@ class Archiever {
         return nowUrl.replace(/\/(\?.+|#.+|search)/, '/admin')
     }
 
+    static async createDirectory(directoryPath) {
+        await mkdirp.mkdirp(directoryPath)
+    }
+
     constructor() {
         this.devices = {
             iPhone: devices['iPhone 8 Plus'],
@@ -55,7 +62,7 @@ class Archiever {
     }
 
     async goTo(url) {
-        await this.page.goto(url, { waitUntil: 'networkidle2' });
+        await this.page.goto(url, {waitUntil: 'networkidle2'});
         console.log(`go to ${url}`);
     }
 
@@ -65,24 +72,53 @@ class Archiever {
         console.log(`save screenshot as ${name}`);
     }
 
-    async goToAdminPage() {
 
+    async takeScreenshotForAllDevices(pageName, waitForSelector) {
+        const directoryToSave = await path.join(this.companyName, 'screenshots', pageName);
+
+
+        if (await fsExtra.pathExists(directoryToSave)) {
+            console.log(`directory ${directoryToSave} exists in path`);
+        } else {
+            console.log(`directory ${directoryToSave} does not exists. create it`);
+            await Archiever.createDirectory(directoryToSave);
+        }
+
+        await this.page.setViewport({width: 1600, height: 900});
+        await this.takeScreenshot(`${path.join(directoryToSave, pageName)}_desktop.png`);
+
+        for (let [key, value] of Object.entries(this.devices)) {
+            await this.page.emulate(value);
+            await this.page.waitForSelector(waitForSelector);
+            await this.takeScreenshot(`${path.join(directoryToSave, pageName)}_${key}.png`)
+        }
+
+        await this.page.setViewport({width: 1600, height: 900});
+    }
+
+    async goToAdminPage(url){
+        const adminPageUrl = this.page.url();
+        console.log(adminPageUrl);
+        await this.goTo();
     }
 
     async start() {
         console.log('create driver');
-        this.driver = await puppeteer.launch();
+        this.driver = await puppeteer.launch({ignoreHTTPSErrors: true});
         console.log('create page');
         this.page = await this.driver.newPage();
 
-        for (let url of WEBSKY_SITES) {
-            console.log(url);
-            let webskyUrl = url;
-            let companyName = Archiever.getAviacompanyName(url);
 
-            await this.goTo(url);
-            await this.takeScreenshot(`${companyName}.png`);
-        }
+        await this.goTo(url);
+        // for (let url of WEBSKY_SITES) {
+        //     console.log(url);
+        //     let webskyUrl = url;
+        //     this.companyName = Archiever.getAviacompanyName(url);
+        //
+        //     await this.takeScreenshotForAllDevices('search', '[submit="vm.searchSubmitHandler"]');
+        // }
+
+
 
     }
 
@@ -90,6 +126,4 @@ class Archiever {
 
 const archiever = new Archiever();
 archiever.start();
-// console.log(Archiever.createAdminUrl(WEBSKY_SITES[0]));
-// console.log(Archiever.getAviacompanyName(WEBSKY_SITES[0]));
 
